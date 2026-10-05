@@ -377,7 +377,12 @@ namespace TbhCompanion
             {
                 wc.Headers.Add("User-Agent", "TbhCompanion");
                 wc.Headers.Add("Accept", "application/vnd.github+json");
-                json = wc.DownloadString(url);
+                // DownloadString decodes with Encoding.Default — the machine's ANSI
+                // codepage — and ignores the response charset. On a non-Latin
+                // Windows that turns any non-ASCII in a release title or body into
+                // mojibake whose stray bytes break the JSON, so read the bytes and
+                // decode them ourselves.
+                json = System.Text.Encoding.UTF8.GetString(wc.DownloadData(url));
             }
             var js = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
             var arr = js.DeserializeObject(json) as System.Collections.IEnumerable;
