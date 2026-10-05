@@ -66,7 +66,7 @@ namespace TbhCompanion
                 activity["assets"] = assets;
                 var repoButton = new Dictionary<string, object>();
                 repoButton["label"] = "GitHub";
-                repoButton["url"] = "https://github.com/preschian/tbh-presence";
+                repoButton["url"] = "https://github.com/LaoZhuJackson/tbh-presence";
                 activity["buttons"] = new List<object> { repoButton };
                 args["activity"] = activity;
             }

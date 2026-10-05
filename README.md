@@ -1,6 +1,6 @@
 # TBH Companion
 
-[![GitHub Downloads](https://img.shields.io/github/downloads/preschian/tbh-presence/total)](https://github.com/preschian/tbh-presence/releases)
+[![GitHub Downloads](https://img.shields.io/github/downloads/LaoZhuJackson/tbh-presence/total)](https://github.com/LaoZhuJackson/tbh-presence/releases)
 
 **English** · [简体中文](README.zh-CN.md)
 

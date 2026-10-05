@@ -36,7 +36,7 @@ permissions:
 env:
   APPID: '3678970'
   LABEL: steam-patch
-  MENTION: preschian
+  MENTION: LaoZhuJackson
   DELTA: '20000'   # tool 3.00.28 - game 1.00.28
 
 jobs:

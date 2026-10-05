@@ -19,7 +19,9 @@ namespace TbhCompanion
     // Only X.Y is compared; the hotfix suffix never affects matching.
     static class SelfUpdate
     {
-        const string Repo = "preschian/tbh-presence";
+        // This fork publishes its own releases: pointing at the upstream repo would
+        // silently replace a distributed build with the official English one.
+        const string Repo = "LaoZhuJackson/tbh-presence";
         const string ReleasesApi = "https://api.github.com/repos/" + Repo + "/releases?per_page=100";
 
         // Release assets must come from this repo's own release downloads — the URL
