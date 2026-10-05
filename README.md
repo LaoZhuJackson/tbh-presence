@@ -2,6 +2,8 @@
 
 [![GitHub Downloads](https://img.shields.io/github/downloads/preschian/tbh-presence/total)](https://github.com/preschian/tbh-presence/releases)
 
+**English** · [简体中文](README.zh-CN.md)
+
 A tray companion for **TaskBarHero**: shows your progress on Discord, and
 automates the game's idle chores.
 
@@ -28,6 +30,9 @@ automates the game's idle chores.
   - **Runes** — auto-upgrades runes.
 - **Scheduled restart** — optionally close and relaunch TaskBarHero after N days
   of uptime, to shed RAM on long idle sessions. In both editions.
+- **Language** — English or Simplified Chinese, picked in Status & Settings and
+  applied as soon as you pick it. The stage line stays English because Discord
+  is what shows it.
 - **Self-update** — tells you when a game patch has left the mods behind, and
   updates itself when a matching release exists.
 

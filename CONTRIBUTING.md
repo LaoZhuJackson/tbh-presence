@@ -171,6 +171,53 @@ Compiled as `/target:winexe` so there's no console window in tray mode; console
 modes (`--console`, `--once`, `--help`) attach a console on demand. The TBH logo
 is embedded via `/win32icon:assets\app.ico`.
 
+`csc` is also passed `/codepage:65001`. The sources are BOM-less UTF-8, and this
+compiler otherwise decodes them with the machine's ANSI codepage — which turns
+the Chinese UI strings in `src/Lang.cs` into mojibake on any non-UTF-8 host.
+Don't remove it, and don't rely on a BOM instead.
+
+## Localization
+
+The companion's UI is English-first. `src/Lang.cs` holds the language state and
+the Simplified Chinese table; every display string goes through `Lang.T(...)`,
+whose key *is* the English text, so a missing translation falls back to readable
+English rather than a blank control. Interpolated sentences use
+`Lang.F("every {0} min", n)` — the template is looked up first, then formatted.
+
+Rules when adding UI text:
+
+- **Never translate a value that is read back by code.** BepInEx cfg tokens
+  (`SynthesisTypes`, `SoulstoneTiers`), `--once` JSON keys, registry values,
+  `autosynth-status.json` field names and GitHub asset names are contracts. In
+  `StatusForm`, `SynthesisTypes` and `Tiers` double as cfg tokens *and* tile
+  captions — `AddTileRow` translates only what it paints, so the value written
+  by `SelectedTiles` stays English.
+- Keep proper nouns (`TaskBarHero`, `BepInEx`, `Discord`, `GitHub`, `Steam`) and
+  any embedded file names verbatim; translate only the sentence around them.
+- Leave `GameState.Details/PartyLine/Label` in English. It feeds Discord and the
+  status card, and `StatusForm.UpdateStatus` parses it with a regex that expects
+  `Act`/`Stage`.
+- Don't sniff a status string to make a decision — that breaks the moment the
+  string is translated. `PresenceEngine.WaitingForGame` exists because
+  `UpdateStatus` used to look for the substring "waiting".
+
+A label captures its `Font` at construction, so a language switch re-applies the
+CJK family through the `_retranslate` closures in `StatusForm`; custom-painted
+controls call `Theme.F` inside `OnPaint` and pick it up on their next repaint.
+`StatusForm` and `TrayApp` subscribe to `Lang.Changed` and must unsubscribe —
+`StatusForm` in `FormClosed`, or a closed window is kept alive and re-texted.
+
+The user-facing docs are mirrored: `README.zh-CN.md` carries the same content as
+`README.md`, and `docs/settings-window.zh-CN.png` is its screenshot. Regenerate
+the images with `TbhCompanion.exe --shot <path> --lang zh`; `--shot` forces
+English unless `--lang` says otherwise, so the English image can never pick up a
+machine's language.
+
+The settings window opens at the height that shows every setting without
+scrolling (`GrowToFitScreen`, capped to the desktop). If you add rows, the
+window grows rather than the pane scrolling — on a display too short for the
+content it still scrolls, so keep an eye on the total height.
+
 Building the auto-synthesis plugin needs the .NET 8 SDK and a game folder with
 BepInEx already initialized (the interop assemblies it references are generated
 by BepInEx on first game launch):
@@ -211,8 +258,12 @@ TbhCompanion.exe --console       run in a console with live logging
 TbhCompanion.exe --once          print the current game state as JSON and exit
   --interval <sec>              poll interval (default 5)
   --client-id <id>              use your own Discord application
+  --lang <auto|en|zh>           UI language for this run only (not saved)
   --no-cache                    ignore the address cache, full rescan
 ```
+
+`--lang` overrides the saved setting without writing it, which is what makes it
+useful with `--shot` for checking the layout in either language.
 
 ## Using your own Discord application
 
