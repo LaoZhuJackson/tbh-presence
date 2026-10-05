@@ -30,6 +30,11 @@ namespace TbhCompanion
         // but never connects to Discord / clears any activity it had set.
         public volatile bool PresenceEnabled;
 
+        // True while there is no game process to attach to. The settings window
+        // reads this instead of sniffing the status text for "waiting", which
+        // stopped working once the status strings became translatable.
+        public volatile bool WaitingForGame = true;
+
         public PresenceEngine(bool noCache, int interval, string clientId, string cachePath)
         {
             _noCache = noCache;
@@ -63,7 +68,8 @@ namespace TbhCompanion
 
         public void Run()
         {
-            Status("client id " + _clientId + " - waiting for game");
+            WaitingForGame = true;
+            Status(Lang.F("client id {0} - waiting for game", _clientId));
             var discord = new DiscordRpc(_clientId);
             string lastSent = null;                 // null = none, "" = cleared (Discord)
             string lastStageSig = null;             // last stage surfaced to the UI/status
@@ -84,14 +90,16 @@ namespace TbhCompanion
                         LastStageLabel = null;
                         lastStageSig = null;
                         DiscordConnected = discord.Connected;
+                        WaitingForGame = true;
                         // game closed = plugin dll unlocked; good moment to (re)deploy
                         if (Build.Synth) AutoSynthDeploy.TryDeployThrottled(Status);
-                        Status("waiting for TaskBarHero...");
+                        Status(Lang.T("waiting for TaskBarHero..."));
                         Sleep(5);
                         continue;
                     }
 
-                    Status("attached (PID " + proc.Id + ") - resolving...");
+                    WaitingForGame = false;
+                    Status(Lang.F("attached (PID {0}) - resolving...", proc.Id));
                     using (var mem = new Mem(proc.Id))
                     {
                         var reader = new GameReader(mem, proc, _cachePath);
@@ -101,7 +109,7 @@ namespace TbhCompanion
                             try { reader.Resolve(_noCache, Status); resolved = true; }
                             catch (Exception ex)
                             {
-                                Status("not ready (" + ex.Message + ") - retry 10s");
+                                Status(Lang.F("not ready ({0}) - retry 10s", ex.Message));
                                 Sleep(10);
                             }
                         }
@@ -134,7 +142,7 @@ namespace TbhCompanion
                                 {
                                     lastDiscordTry = DateTime.Now;
                                     if (discord.Connect()) lastSent = null;
-                                    else Status("Discord not running - will retry");
+                                    else Status(Lang.T("Discord not running - will retry"));
                                 }
                             }
                             else if (discord.Connected && lastSent != "")
@@ -159,7 +167,7 @@ namespace TbhCompanion
                                     }
                                     catch (Exception ex)
                                     {
-                                        Status("Discord lost (" + ex.Message + ") - reconnecting");
+                                        Status(Lang.F("Discord lost ({0}) - reconnecting", ex.Message));
                                         discord.Dispose();
                                     }
                                 }
@@ -168,7 +176,7 @@ namespace TbhCompanion
                             Sleep(_interval);
                         }
                     }
-                    if (_running) Status("game closed - waiting for restart...");
+                    if (_running) Status(Lang.T("game closed - waiting for restart..."));
                 }
             }
             finally

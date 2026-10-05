@@ -24,6 +24,19 @@ namespace TbhCompanion
             set { Set("PresenceEnabled", value ? "true" : "false"); }
         }
 
+        // UI language: "auto" (follow Windows), "en", or "zh". Stored as a machine
+        // token rather than the dropdown label, so relabelling the dropdown can
+        // never invalidate an existing settings file.
+        public static string Language
+        {
+            get
+            {
+                string v = Get("Language");
+                return v == null ? "auto" : v;
+            }
+            set { Set("Language", value); }
+        }
+
         // Close and relaunch TaskBarHero after it has been running this long.
         // Off by default — opt-in for long idle sessions that accumulate RAM.
         // Enabling (or tightening the day limit) arms a timer so a long-lived

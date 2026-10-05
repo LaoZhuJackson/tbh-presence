@@ -26,12 +26,12 @@ namespace TbhCompanion
             try
             {
                 string gameDir = FindGameDir();
-                if (gameDir == null) { log("autosynth: game folder not found, skipped"); return; }
+                if (gameDir == null) { log(Lang.T("autosynth: game folder not found, skipped")); return; }
 
                 string plugins = Path.Combine(gameDir, "BepInEx", "plugins");
                 if (!Directory.Exists(plugins))
                 {
-                    log("autosynth: BepInEx not installed in " + gameDir + ", skipped (see autosynth/README.md)");
+                    log(Lang.F("autosynth: BepInEx not installed in {0}, skipped (see autosynth/README.md)", gameDir));
                     return;
                 }
 
@@ -39,23 +39,23 @@ namespace TbhCompanion
                 BepInExCfg.ApplyHiddenDefaultOnce(gameDir, log);
 
                 byte[] src = LoadPluginBytes();
-                if (src == null) { log("autosynth: plugin dll not bundled, skipped"); return; }
+                if (src == null) { log(Lang.T("autosynth: plugin dll not bundled, skipped")); return; }
 
                 string target = Path.Combine(plugins, "TbhAutoSynth.dll");
                 if (File.Exists(target) && SameBytes(File.ReadAllBytes(target), src))
                     return; // already up to date
 
                 File.WriteAllBytes(target, src);
-                log("autosynth: plugin deployed to " + target + " (active after next game start)");
+                log(Lang.F("autosynth: plugin deployed to {0} (active after next game start)", target));
             }
             catch (IOException)
             {
                 // dll locked by the running game - an update will land on a later start
-                log("autosynth: plugin update pending (game is running)");
+                log(Lang.T("autosynth: plugin update pending (game is running)"));
             }
             catch (Exception ex)
             {
-                log("autosynth: deploy skipped: " + ex.Message);
+                log(Lang.F("autosynth: deploy skipped: {0}", ex.Message));
             }
         }
 

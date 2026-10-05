@@ -33,11 +33,21 @@ namespace TbhCompanion
             int interval = 5;
             string clientId = DEFAULT_CLIENT_ID;
 
+            // Language is settled before anything builds UI text.
+            Lang.Load();
+            int devLang = -1;
+            for (int i = 0; i < argv.Length - 1; i++)
+                if (argv[i] == "--lang") devLang = Lang.IndexOf(argv[i + 1]);
+            if (devLang >= 0) Lang.Override(devLang);
+
             for (int i = 0; i < argv.Length; i++)
             {
                 switch (argv[i])
                 {
                     case "--shot":  // dev: render the settings window to a PNG and exit
+                        // Keep the docs image English regardless of the machine's
+                        // language, unless --lang asked for something specific.
+                        if (devLang < 0) Lang.Override(Lang.English);
                         try { SetProcessDPIAware(); } catch { }
                         Application.EnableVisualStyles();
                         string shotPath = argv[++i];
@@ -46,7 +56,8 @@ namespace TbhCompanion
                             delegate { return true; },
                             delegate { return "Connected"; },
                             delegate { return true; },
-                            delegate { });
+                            delegate { },
+                            delegate { return false; });
                         form.ShowInTaskbar = false;
                         form.StartPosition = FormStartPosition.Manual;
                         form.Location = new System.Drawing.Point(-3000, -3000);
@@ -64,6 +75,7 @@ namespace TbhCompanion
                     case "--no-cache": noCache = true; break;
                     case "--interval": interval = int.Parse(argv[++i]); break;
                     case "--client-id": clientId = argv[++i]; break;
+                    case "--lang": i++; break;   // already applied above
                     case "-h":
                     case "--help":
                         return ShowHelp();
@@ -110,6 +122,7 @@ namespace TbhCompanion
             Console.WriteLine();
             Console.WriteLine("  --interval <sec>                poll interval (default 5)");
             Console.WriteLine("  --client-id <id>                Discord application id");
+            Console.WriteLine("  --lang <auto|en|zh>             UI language for this run (not saved)");
             Console.WriteLine("  --no-cache                      ignore the address cache, full rescan");
             return 0;
         }

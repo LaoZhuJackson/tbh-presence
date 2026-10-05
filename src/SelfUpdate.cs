@@ -119,9 +119,55 @@ namespace TbhCompanion
             public string ModsVersion;      // "3.01.02-1" or null
             public string ReleaseTag;       // matching release tag, when found
             public string DownloadUrl;      // asset url for this edition
-            public string Message;          // one-line summary for the UI
+            public string Override;         // a swap that failed after we exited
+            public string ErrorText;        // CheckFailed: what the lookup hit
+            public string PendingRelease;   // WaitingRelease: the tag we expect next
+            public bool GameMissing;        // Unknown: the game folder was not found
+            public bool ModsUnknown;        // Unknown: no readable plugin version
+            public bool NoAssetYet;         // WaitingRelease: release exists, no asset
 
             public bool CanUpdate { get { return State == State.UpdateReady && DownloadUrl != null; } }
+
+            // Rendered on demand instead of stored, so a language switch re-texts
+            // the version row without re-running the network lookup. Versions,
+            // tags and file names are passed as arguments and stay verbatim.
+            public string Message { get { return Render(); } }
+
+            string Render()
+            {
+                if (Override != null) return Lang.T(Override);
+                switch (State)
+                {
+                    case State.Unknown:
+                        if (ModsUnknown)
+                            return Lang.F("{0} version unknown (dev build) — game v{1}",
+                                Lang.T(LowerNoun), GameVersion);
+                        return Lang.T(GameMissing
+                            ? "game not found — start TaskBarHero once"
+                            : "game version unreadable");
+
+                    case State.Matched:
+                        return Lang.F("{0} matched (v{1} ↔ game v{2})",
+                            Lang.T(Noun), ModsVersion, GameVersion);
+
+                    case State.Ahead:
+                        return Lang.F("{0} v{1} newer than game v{2}",
+                            Lang.T(Noun), ModsVersion, GameVersion);
+
+                    case State.CheckFailed:
+                        return Lang.F("Update check failed (retrying): {0}",
+                            ErrorText ?? Lang.T("unknown error"));
+
+                    case State.WaitingRelease:
+                        return NoAssetYet
+                            ? Lang.F("Release {0} has no {1} asset yet", ReleaseTag, AssetName())
+                            : Lang.F("Waiting for release v{0} (game v{1})", PendingRelease, GameVersion);
+
+                    case State.UpdateReady:
+                        return Lang.F("Update available: game v{0} → release {1}", GameVersion, ReleaseTag);
+                }
+                return "";
+            }
         }
 
         static Status _last;
@@ -155,8 +201,7 @@ namespace TbhCompanion
         {
             var st = EvaluateCore();
             // A swap that failed after we exited is the most useful thing to say.
-            string failed = TakeFailureMarker();
-            if (failed != null) st.Message = failed;
+            st.Override = TakeFailureMarker();
             return st;
         }
 
@@ -172,15 +217,13 @@ namespace TbhCompanion
             if (!game.Ok)
             {
                 st.State = State.Unknown;
-                st.Message = AutoSynthDeploy.FindGameDir() == null
-                    ? "game not found — start TaskBarHero once"
-                    : "game version unreadable";
+                st.GameMissing = AutoSynthDeploy.FindGameDir() == null;
                 return st;
             }
             if (!mods.Ok)
             {
                 st.State = State.Unknown;
-                st.Message = LowerNoun + " version unknown (dev build) — game v" + st.GameVersion;
+                st.ModsUnknown = true;
                 return st;
             }
 
@@ -188,13 +231,11 @@ namespace TbhCompanion
             if (cmp == 0)
             {
                 st.State = State.Matched;
-                st.Message = Noun + " matched (v" + st.ModsVersion + " ↔ game v" + st.GameVersion + ")";
                 return st;
             }
             if (cmp < 0)
             {
                 st.State = State.Ahead;
-                st.Message = Noun + " v" + st.ModsVersion + " newer than game v" + st.GameVersion;
                 return st;
             }
 
@@ -207,26 +248,24 @@ namespace TbhCompanion
             {
                 // Not the same as "no release yet" — say so, and retry sooner.
                 st.State = State.CheckFailed;
-                st.Message = "Update check failed (retrying): " + Short(ex.Message);
+                st.ErrorText = Short(ex.Message);
                 return st;
             }
 
             if (tag == null)
             {
                 st.State = State.WaitingRelease;
-                st.Message = "Waiting for release v" + ModsMajor + "." + game.X.ToString("00") + "."
-                    + game.Y.ToString("00") + " (game v" + st.GameVersion + ")";
+                st.PendingRelease = ModsMajor + "." + game.X.ToString("00") + "." + game.Y.ToString("00");
                 return st;
             }
 
             st.State = State.UpdateReady;
             st.ReleaseTag = tag;
             st.DownloadUrl = url;
-            st.Message = "Update available: game v" + st.GameVersion + " → release " + tag;
             if (url == null)
             {
                 st.State = State.WaitingRelease;
-                st.Message = "Release " + tag + " has no " + AssetName() + " asset yet";
+                st.NoAssetYet = true;
             }
             return st;
         }
@@ -323,10 +362,10 @@ namespace TbhCompanion
         {
             try
             {
-                if (st == null || !st.CanUpdate) { log("Nothing to update."); return false; }
+                if (st == null || !st.CanUpdate) { log(Lang.T("Nothing to update.")); return false; }
                 if (!st.DownloadUrl.StartsWith(AssetPrefix, StringComparison.Ordinal))
                 {
-                    log("Refusing an update from an unexpected location.");
+                    log(Lang.T("Refusing an update from an unexpected location."));
                     return false;
                 }
 
@@ -337,14 +376,17 @@ namespace TbhCompanion
                 string why;
                 if (!FolderWritable(Path.GetDirectoryName(exePath), out why))
                 {
-                    log("Cannot update in place: " + why + ". Move the app to a writable folder.");
+                    // why is either a known token ("app folder not found") or an
+                    // exception message; Lang.T translates the first and passes
+                    // the second through unchanged.
+                    log(Lang.F("Cannot update in place: {0}. Move the app to a writable folder.", Lang.T(why)));
                     return false;
                 }
 
                 string staged = Path.Combine(Path.GetTempPath(),
                     "TbhCompanion_update_" + Guid.NewGuid().ToString("N") + ".exe");
 
-                log("Downloading " + st.ReleaseTag + "...");
+                log(Lang.F("Downloading {0}...", st.ReleaseTag));
                 ServicePointManager.SecurityProtocol =
                     SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
                 using (var wc = new WebClient())
@@ -357,17 +399,17 @@ namespace TbhCompanion
                 if (!info.Exists || info.Length < 64 * 1024)
                 {
                     TryDelete(staged);
-                    log("Download looks incomplete — please try again.");
+                    log(Lang.T("Download looks incomplete — please try again."));
                     return false;
                 }
 
                 if (!StartSwap(exePath, staged, log)) { TryDelete(staged); return false; }
-                log("Restarting to finish the update...");
+                log(Lang.T("Restarting to finish the update..."));
                 return true;
             }
             catch (Exception ex)
             {
-                log("Update failed: " + ex.Message);
+                log(Lang.F("Update failed: {0}", ex.Message));
                 return false;
             }
         }
@@ -428,7 +470,7 @@ namespace TbhCompanion
             }
             catch (Exception ex)
             {
-                log("Could not start the updater: " + ex.Message);
+                log(Lang.F("Could not start the updater: {0}", ex.Message));
                 return false;
             }
         }
@@ -463,9 +505,12 @@ namespace TbhCompanion
             catch { return null; }
         }
 
+        // Returns null for empty input so the caller decides how to phrase it —
+        // the English "unknown error" fallback is rendered through Lang in
+        // Status.Render, and translating here would double-translate it.
         static string Short(string s)
         {
-            if (string.IsNullOrEmpty(s)) return "unknown error";
+            if (string.IsNullOrEmpty(s)) return null;
             s = s.Replace("\r", " ").Replace("\n", " ").Trim();
             return s.Length > 90 ? s.Substring(0, 89) + "…" : s;
         }

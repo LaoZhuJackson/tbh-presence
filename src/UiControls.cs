@@ -32,7 +32,14 @@ namespace TbhCompanion
             Hex("7c3aed"), Hex("ea580c"), Hex("0d9488"), Hex("db2777"), Hex("4338ca")
         };
 
-        public static Font F(float size, FontStyle style) { return new Font("Segoe UI", size, style); }
+        // Custom-painted controls call this inside OnPaint, so they pick up a
+        // language switch on their next repaint. A Label captured its Font at
+        // construction, so StatusForm's retranslate pass reassigns those too.
+        public static Font F(float size, FontStyle style)
+        {
+            string cjk = Lang.FontFamily;
+            return cjk == null ? new Font("Segoe UI", size, style) : new Font(cjk, size, style);
+        }
 
         // DPI scale for a paint surface (1.0 at 96 dpi, 1.25 at 125%, ...).
         public static float Scale(Graphics g) { return g.DpiX / 96f; }
@@ -130,6 +137,14 @@ namespace TbhCompanion
             Cursor = Cursors.Hand; Height = 36;
         }
         protected override void OnClick(EventArgs e) { if (Enabled) Selected = !Selected; base.OnClick(e); }
+        // Caption is a plain field, so a language switch must go through here or
+        // the tile keeps painting the old text.
+        public void SetCaption(string text)
+        {
+            if (Caption == text) return;
+            Caption = text;
+            Invalidate();
+        }
         protected override void OnPaintBackground(PaintEventArgs e) { }
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -327,6 +342,8 @@ namespace TbhCompanion
                      ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
             Cursor = Cursors.Hand; Height = 36;
         }
+        // Text is painted by us, so a change would otherwise not repaint.
+        protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); Invalidate(); }
         protected override void OnPaintBackground(PaintEventArgs e) { }
         protected override void OnPaint(PaintEventArgs e)
         {

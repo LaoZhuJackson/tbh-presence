@@ -60,12 +60,12 @@ namespace TbhCompanion
             gameDir = AutoSynthDeploy.FindGameDir();
             if (gameDir == null)
             {
-                log("Could not find the TaskBarHero folder. Start the game once, then try again.");
+                log(Lang.T("Could not find the TaskBarHero folder. Start the game once, then try again."));
                 return false;
             }
             if (GameRunning())
             {
-                log("Please close TaskBarHero first, then try again.");
+                log(Lang.T("Please close TaskBarHero first, then try again."));
                 return false;
             }
             return true;
@@ -95,17 +95,17 @@ namespace TbhCompanion
                 if (!TryResolveGameDir(log, out gameDir)) return false;
                 if (IsInstalledAt(gameDir))
                 {
-                    log("BepInEx is already installed.");
+                    log(Lang.T("BepInEx is already installed."));
                     return true;
                 }
 
                 BackupSave(log);
 
                 string tmpZip = Path.Combine(Path.GetTempPath(), "bepinex_tbh.zip");
-                log("Downloading BepInEx (~35 MB)...");
+                log(Lang.T("Downloading BepInEx (~35 MB)..."));
                 Download(BepInExUrl, tmpZip);
 
-                log("Installing into the game folder...");
+                log(Lang.T("Installing into the game folder..."));
                 ExtractOver(tmpZip, gameDir);
                 try { File.Delete(tmpZip); } catch { }
 
@@ -114,19 +114,19 @@ namespace TbhCompanion
 
                 if (!IsInstalledAt(gameDir))
                 {
-                    log("Install finished but files look incomplete - please try again.");
+                    log(Lang.T("Install finished but files look incomplete - please try again."));
                     return false;
                 }
 
                 // deploy the plugin now so the very next game launch has it
                 AutoSynthDeploy.TryDeploy(log);
 
-                log("Done. Start TaskBarHero once to finish setup, then open the Cube panel.");
+                log(Lang.T("Done. Start TaskBarHero once to finish setup, then open the Cube panel."));
                 return true;
             }
             catch (Exception ex)
             {
-                log("Setup failed: " + ex.Message);
+                log(Lang.F("Setup failed: {0}", ex.Message));
                 return false;
             }
         }
@@ -141,11 +141,11 @@ namespace TbhCompanion
                 if (!TryResolveGameDir(log, out gameDir)) return false;
                 if (!HasRemnantsAt(gameDir))
                 {
-                    log("Nothing to remove — BepInEx is not installed.");
+                    log(Lang.T("Nothing to remove — BepInEx is not installed."));
                     return true;
                 }
 
-                log("Removing BepInEx...");
+                log(Lang.T("Removing BepInEx..."));
                 string root = RootPrefix(gameDir);
 
                 foreach (string name in RemnantDirs)
@@ -155,16 +155,16 @@ namespace TbhCompanion
 
                 if (HasRemnantsAt(gameDir))
                 {
-                    log("Cleanup unfinished — close TaskBarHero and retry.");
+                    log(Lang.T("Cleanup unfinished — close TaskBarHero and retry."));
                     return false;
                 }
 
-                log("Done. Mods removed. Presence still works.");
+                log(Lang.T("Done. Mods removed. Presence still works."));
                 return true;
             }
             catch (Exception ex)
             {
-                log("Cleanup failed: " + ex.Message);
+                log(Lang.F("Cleanup failed: {0}", ex.Message));
                 return false;
             }
         }
@@ -176,11 +176,11 @@ namespace TbhCompanion
                 if (!IsUnderRoot(path, rootPrefix)) return;
                 if (!Directory.Exists(path)) return;
                 Directory.Delete(path, true);
-                log("Removed " + Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) + "/");
+                log(Lang.F("Removed {0}/", Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))));
             }
             catch (Exception ex)
             {
-                log("Could not remove " + Path.GetFileName(path) + ": " + ex.Message);
+                log(Lang.F("Could not remove {0}: {1}", Path.GetFileName(path), ex.Message));
             }
         }
 
@@ -191,11 +191,11 @@ namespace TbhCompanion
                 if (!IsUnderRoot(path, rootPrefix)) return;
                 if (!File.Exists(path)) return;
                 File.Delete(path);
-                log("Removed " + Path.GetFileName(path));
+                log(Lang.F("Removed {0}", Path.GetFileName(path)));
             }
             catch (Exception ex)
             {
-                log("Could not remove " + Path.GetFileName(path) + ": " + ex.Message);
+                log(Lang.F("Could not remove {0}: {1}", Path.GetFileName(path), ex.Message));
             }
         }
 
@@ -212,11 +212,11 @@ namespace TbhCompanion
                 string dst = Path.Combine(Path.GetDirectoryName(save),
                     "SaveFile_Live_backup_" + stamp + ".es3");
                 File.Copy(save, dst, false);
-                log("Backed up your save to " + Path.GetFileName(dst));
+                log(Lang.F("Backed up your save to {0}", Path.GetFileName(dst)));
             }
             catch (Exception ex)
             {
-                log("(Could not back up the save automatically: " + ex.Message + ")");
+                log(Lang.F("(Could not back up the save automatically: {0})", ex.Message));
             }
         }
 

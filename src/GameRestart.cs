@@ -103,7 +103,7 @@ namespace TbhCompanion
         static void RunRestart(int pid, string exePath, int days, Action<string> log, Func<bool> keepGoing)
         {
             if (log != null)
-                log("scheduled restart after " + days + " day(s) — closing TaskBarHero...");
+                log(Lang.F("scheduled restart after {0} day(s) — closing TaskBarHero...", days));
 
             Process proc = null;
             try { if (pid > 0) proc = Process.GetProcessById(pid); } catch { }
@@ -116,7 +116,7 @@ namespace TbhCompanion
             }
             if (!closed)
             {
-                if (log != null) log("scheduled restart: could not close the game");
+                if (log != null) log(Lang.T("scheduled restart: could not close the game"));
                 return;
             }
 
@@ -125,7 +125,7 @@ namespace TbhCompanion
             SleepInterruptible(2000, keepGoing);
 
             if (LaunchAndConfirm(exePath, log, keepGoing)) return;
-            if (log != null) log("scheduled restart: game closed, but relaunch failed");
+            if (log != null) log(Lang.T("scheduled restart: game closed, but relaunch failed"));
         }
 
         static bool CloseGame(Process proc, Func<bool> keepGoing)
@@ -170,7 +170,7 @@ namespace TbhCompanion
                     UseShellExecute = true
                 });
                 steamOpened = true;
-                if (log != null) log("scheduled restart: launching via Steam...");
+                if (log != null) log(Lang.T("scheduled restart: launching via Steam..."));
             }
             catch { }
 
@@ -180,7 +180,7 @@ namespace TbhCompanion
                 return true;
 
             if (steamOpened && log != null)
-                log("scheduled restart: Steam didn't start the game — trying exe...");
+                log(Lang.T("scheduled restart: Steam didn't start the game — trying exe..."));
 
             if (!LaunchExe(exePath, log)) return false;
             return WaitForGame(ExeAppearSeconds);
@@ -197,7 +197,7 @@ namespace TbhCompanion
                     WorkingDirectory = Path.GetDirectoryName(exePath),
                     UseShellExecute = true
                 });
-                if (log != null) log("scheduled restart: launching TaskBarHero...");
+                if (log != null) log(Lang.T("scheduled restart: launching TaskBarHero..."));
                 return true;
             }
             catch { return false; }

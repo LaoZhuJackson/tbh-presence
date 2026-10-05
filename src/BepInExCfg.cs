@@ -65,7 +65,7 @@ namespace TbhCompanion
                 if (GetConsoleEnabled(text))
                 {
                     File.WriteAllText(path, SetConsoleEnabled(text, false));
-                    if (log != null) log("autosynth: BepInEx console hidden by default (change it in Status & Settings)");
+                    if (log != null) log(Lang.T("autosynth: BepInEx console hidden by default (change it in Status & Settings)"));
                 }
                 Directory.CreateDirectory(System.IO.Path.GetDirectoryName(marker));
                 File.WriteAllText(marker, DateTime.UtcNow.ToString("o"));

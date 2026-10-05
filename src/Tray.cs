@@ -11,7 +11,9 @@ namespace TbhCompanion
         readonly NotifyIcon _icon;
         readonly PresenceEngine _engine;
         readonly System.Threading.Thread _worker;
-        string _lastStatus = "starting...";
+        // Kept as fields so a language switch can re-text the menu in place.
+        ToolStripMenuItem _statusItem, _presenceItem, _openItem, _quitItem;
+        string _lastStatus = Lang.T("starting...");
         StatusForm _form;
 
         public TrayApp(PresenceEngine engine)
@@ -19,20 +21,20 @@ namespace TbhCompanion
             _engine = engine;
 
             var menu = new ContextMenuStrip();
-            var status = new ToolStripMenuItem("Starting...") { Enabled = false };
-            menu.Items.Add(status);
+            _statusItem = new ToolStripMenuItem(Lang.T("Starting...")) { Enabled = false };
+            menu.Items.Add(_statusItem);
             menu.Items.Add(new ToolStripSeparator());
-            var presence = new ToolStripMenuItem("Enable presence") { Checked = _engine.PresenceEnabled, CheckOnClick = true };
-            presence.Click += delegate { _engine.SetPresenceEnabled(presence.Checked); };
-            menu.Items.Add(presence);
+            _presenceItem = new ToolStripMenuItem(Lang.T("Enable presence")) { Checked = _engine.PresenceEnabled, CheckOnClick = true };
+            _presenceItem.Click += delegate { _engine.SetPresenceEnabled(_presenceItem.Checked); };
+            menu.Items.Add(_presenceItem);
             // keep the check in sync if it was toggled from the settings window
-            menu.Opening += delegate { presence.Checked = _engine.PresenceEnabled; };
-            var open = new ToolStripMenuItem("Status && Settings...");
-            open.Click += delegate { OpenForm(); };
-            menu.Items.Add(open);
-            var quit = new ToolStripMenuItem("Quit");
-            quit.Click += delegate { ExitThread(); };
-            menu.Items.Add(quit);
+            menu.Opening += delegate { _presenceItem.Checked = _engine.PresenceEnabled; };
+            _openItem = new ToolStripMenuItem(Lang.T("Status && Settings..."));
+            _openItem.Click += delegate { OpenForm(); };
+            menu.Items.Add(_openItem);
+            _quitItem = new ToolStripMenuItem(Lang.T("Quit"));
+            _quitItem.Click += delegate { ExitThread(); };
+            menu.Items.Add(_quitItem);
 
             _icon = new NotifyIcon();
             _icon.Icon = LoadIcon();
@@ -54,12 +56,12 @@ namespace TbhCompanion
                     if (menu.IsHandleCreated)
                         menu.BeginInvoke((Action)delegate
                         {
-                            status.Text = s;
+                            _statusItem.Text = s;
                             _icon.Text = Truncate("TBH: " + s, 63);
                         });
                     else
                     {
-                        status.Text = s;
+                        _statusItem.Text = s;
                         _icon.Text = Truncate("TBH: " + s, 63);
                     }
                 }
@@ -70,7 +72,26 @@ namespace TbhCompanion
             _worker.IsBackground = true;
             _worker.Start();
 
+            Lang.Changed += OnLanguageChanged;
             ThreadExit += delegate { Shutdown(); };
+        }
+
+        // Re-text the menu in place. Rebuilding the ContextMenuStrip would drop
+        // the Opening check-sync and the presence click handler, and risk the
+        // cross-thread tray handle exception the OnStatus marshaler guards against.
+        void OnLanguageChanged()
+        {
+            try
+            {
+                if (_statusItem == null || _statusItem.IsDisposed) return;
+                _statusItem.Text = _lastStatus;
+                _presenceItem.Text = Lang.T("Enable presence");
+                _openItem.Text = Lang.T("Status && Settings...");
+                _quitItem.Text = Lang.T("Quit");
+                // The presence check state belongs to the engine — leave it alone.
+                _icon.Text = Truncate("TBH: " + _lastStatus, 63);
+            }
+            catch { }
         }
 
         void OpenForm()
@@ -82,7 +103,8 @@ namespace TbhCompanion
                     delegate { return _engine.DiscordConnected; },
                     delegate { return _lastStatus; },
                     delegate { return _engine.PresenceEnabled; },
-                    delegate(bool on) { _engine.SetPresenceEnabled(on); });
+                    delegate(bool on) { _engine.SetPresenceEnabled(on); },
+                    delegate { return _engine.WaitingForGame; });
                 _form.Show();
             }
             else
@@ -95,6 +117,7 @@ namespace TbhCompanion
 
         void Shutdown()
         {
+            Lang.Changed -= OnLanguageChanged;
             _engine.Stop();
             try { _worker.Join(3000); } catch { }
             // If a scheduled restart already closed the game, let relaunch finish

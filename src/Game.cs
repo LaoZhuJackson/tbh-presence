@@ -323,17 +323,17 @@ namespace TbhCompanion
             bool haveTables = LoadCache(noCache, out sameBoot);
             if (sameBoot)
             {
-                log("address cache hit - no scan needed");
+                log(Lang.T("address cache hit - no scan needed"));
                 return;
             }
-            log(haveTables
+            log(Lang.T(haveTables
                 ? "tables cached - scanning live objects only (~30s)..."
-                : "first run for this game build - full memory scan (~90s)...");
+                : "first run for this game build - full memory scan (~90s)..."));
             FindSaveData();
             if (!haveTables || _stages.Count == 0) BuildStageTable();
             if (!haveTables || _heroNames.Count == 0) BuildHeroTable();
             FindLiveStageStatics();
-            if (_uuStatics == 0) log("live stage statics not found - stage falls back to save data");
+            if (_uuStatics == 0) log(Lang.T("live stage statics not found - stage falls back to save data"));
             SaveCache();
         }
 

@@ -53,7 +53,10 @@ function Build-Edition([string]$outName, [bool]$full) {
         $extra += "/define:PRESENCE_ONLY"
     }
     # /target:winexe -> no console window in tray mode (console modes attach on demand)
+    # /codepage:65001 -> sources are BOM-less UTF-8; without this csc decodes them
+    # with the machine's ANSI codepage and the Chinese UI strings turn to mojibake.
     & $csc /nologo /optimize+ /target:winexe /platform:anycpu `
+        /codepage:65001 `
         /out:$out `
         "/win32icon:$(Join-Path $here 'assets\app.ico')" `
         /r:System.Web.Extensions.dll `

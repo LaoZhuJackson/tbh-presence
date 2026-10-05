@@ -33,11 +33,15 @@ namespace TbhCompanion
             new RecipeTier { Label = "Lv.65~80", Lo = 65 }
         };
 
-        // Tile captions double as the cfg tokens the plugin writes back. Reading is
-        // matched on a stem instead, because the plugin also accepts the singular
-        // spellings ("Material", "Accessory") and "Gear" for Equipment.
+        // These are the cfg tokens the plugin writes back — never translate them.
+        // They are also the tile captions, but AddTileRow translates only the
+        // text it paints, so the value saved by SelectedTiles stays English.
+        // Reading is matched on a stem instead, because the plugin also accepts
+        // the singular spellings ("Material", "Accessory") and "Gear" for Equipment.
         static readonly string[] SynthesisTypes = { "Equipment", "Materials", "Accessories" };
         static readonly string[] SynthesisTypeStems = { "equipment", "material", "accessor" };
+        // Same deal as SynthesisTypes: cfg tokens (SoulstoneTiers), translated
+        // only for display.
         static readonly string[] Tiers = { "Normal", "Nightmare", "Hell", "Torment" };
         static readonly string[] TierStems = { "normal", "nightmare", "hell", "torment" };
 
@@ -65,7 +69,12 @@ namespace TbhCompanion
         readonly Func<string> _diag;
         readonly Func<bool> _presenceEnabled;
         readonly Action<bool> _setPresenceEnabled;
+        readonly Func<bool> _waitingForGame;
         readonly Timer _timer;
+        // Closures that re-apply their control's text after a language switch.
+        // Registered by the Add* helpers so call sites keep passing plain
+        // English literals, which double as the lookup keys.
+        readonly List<Action> _retranslate = new List<Action>();
         string _cfgPath, _bepinexCfgPath;
         bool _modOpRunning;          // install or remove in flight
         string _modOpNote;           // last progress/error from the background op
@@ -95,19 +104,24 @@ namespace TbhCompanion
         SegmentBar _equipSeg, _matSeg, _accSeg;
         Label _equipRarityValue, _matRarityValue, _accRarityValue;
         Stepper _cycleMin, _restartDays, _alchemyLevel, _offeringMax, _actBossRuns, _idleSec;
-        FlatDrop _desiredLevel, _alchemyRarity;
+        FlatDrop _desiredLevel, _alchemyRarity, _language;
         FlatButton _saveBtn, _modsBtn, _launchBtn, _updateBtn;
         Label _cfgNote, _verNote;
+        // _cfgNote is written once per action and never recomputed, so it keeps a
+        // renderer instead of a string: a language switch re-runs it. Null when no
+        // note has been set yet (and always in the presence-only edition).
+        Func<string> _cfgNoteRender;
         readonly ToolTip _verTip = new ToolTip();
 
         public StatusForm(Func<string> stageLabel, Func<bool> discordConnected, Func<string> diag,
-            Func<bool> presenceEnabled, Action<bool> setPresenceEnabled)
+            Func<bool> presenceEnabled, Action<bool> setPresenceEnabled, Func<bool> waitingForGame)
         {
             _stageLabel = stageLabel;
             _discordConnected = discordConnected;
             _diag = diag;
             _presenceEnabled = presenceEnabled;
             _setPresenceEnabled = setPresenceEnabled;
+            _waitingForGame = waitingForGame;
 
             Text = "TBH Companion";
             FormBorderStyle = FormBorderStyle.None;
@@ -124,6 +138,10 @@ namespace TbhCompanion
 
             BuildSidePanel();
             BuildMainPane();
+            // Open at the size that shows every setting, so the pane does not
+            // start scrolled. LoadConfig below only sets checked/enabled state;
+            // it never moves a control, so the height is already final here.
+            GrowToFitScreen();
 
             LoadConfig();
             UpdateStatus();
@@ -131,9 +149,13 @@ namespace TbhCompanion
             _timer = new Timer { Interval = 1000 };
             _timer.Tick += delegate { UpdateStatus(); };
             _timer.Start();
+            Lang.Changed += OnLanguageChanged;
             FormClosed += delegate
             {
                 _timer.Stop(); _timer.Dispose();
+                // A live subscription would keep this form alive and re-text its
+                // disposed controls the next time the language changes.
+                Lang.Changed -= OnLanguageChanged;
                 if (_wheelFilter != null) { Application.RemoveMessageFilter(_wheelFilter); _wheelFilter = null; }
                 if (_icon != null) _icon.Dispose();
                 _verTip.Dispose();
@@ -168,14 +190,14 @@ namespace TbhCompanion
             // Live status at the bottom: Presence + Synth/cycles as compact cards.
             int rows = Build.Synth ? 2 : 1;
             _live = new LiveStrip { Columns = rows };
-            _live.SetRow(0, "Presence", "—", "", "Off", Theme.TextMuted);
+            _live.SetRow(0, Lang.T("Presence"), "—", "", Lang.T("Off"), Theme.TextMuted);
             if (Build.Synth)
-                _live.SetRow(1, "Loop", "—", "", "Off", Theme.TextMuted);
+                _live.SetRow(1, Lang.T("Loop"), "—", "", Lang.T("Off"), Theme.TextMuted);
             _side.Controls.Add(_live);
 
             // Launch sits just above the status rule. Synth edition stacks
             // Install/Remove mods directly above it (setup → play).
-            _launchBtn = new FlatButton { Text = "Launch game", Fill = Theme.Accent };
+            _launchBtn = new FlatButton { Text = Lang.T("Launch game"), Fill = Theme.Accent };
             _launchBtn.Click += delegate { LaunchGame(); };
             _side.Controls.Add(_launchBtn);
             RefreshLaunchButton();
@@ -302,6 +324,52 @@ namespace TbhCompanion
 
         void AddContent(Control c) { _scroll.Controls.Add(c); }
 
+        // ---- language ----
+
+        // Re-apply every registered text after a language switch. Nothing moves:
+        // all rows are positioned from constants, not from label sizes, so a
+        // re-layout is not needed.
+        void OnLanguageChanged()
+        {
+            if (IsDisposed) return;
+            if (InvokeRequired)
+            {
+                try { BeginInvoke((Action)OnLanguageChanged); } catch { }
+                return;
+            }
+            foreach (var apply in _retranslate)
+            {
+                try { apply(); } catch { }
+            }
+            _side.Invalidate();
+            _main.Invalidate();
+            // These recompute their text from Lang on every tick; running them
+            // now makes the switch instant instead of taking up to a second.
+            RefreshLaunchButton();
+            RefreshModsButton();
+            RefreshVersionRow();
+            UpdateStatus();
+        }
+
+        void Reg(Action apply) { _retranslate.Add(apply); }
+
+        // Set the config note from a renderer so it can be re-texted on a language
+        // switch. Pass a closure over whichever Lang call produced the text.
+        void SetCfgNote(Func<string> render)
+        {
+            _cfgNoteRender = render;
+            if (_cfgNote != null) _cfgNote.Text = render();
+        }
+
+        // A Label captured its Font object at construction, so a CJK family has
+        // to be re-applied here — changing what Theme.F returns is not enough.
+        static void Retext(Label l, string key, Font original)
+        {
+            l.Text = Lang.T(key);
+            string cjk = Lang.FontFamily;
+            if (cjk != null) l.Font = new Font(cjk, original.SizeInPoints, original.Style);
+        }
+
         void FinishContent()
         {
             int bottom = 0;
@@ -338,7 +406,7 @@ namespace TbhCompanion
             int fieldX = Col0X + ColW - fieldW;
             int y = 18;
 
-            y = AddGeneralSection(Col0X, ColW, y, toggleX);
+            y = AddGeneralSection(Col0X, ColW, y, toggleX, fieldX, fieldW);
             y = AddSectionHeader("Discord Presence", Col0X, y);
             y = AddToggleRow("Show stage on Discord", Col0X, ref _presenceToggle, toggleX, y);
             WirePresenceToggle();
@@ -366,7 +434,7 @@ namespace TbhCompanion
             // ---- left: General / Discord / Restart / Mods ----
             int t0 = Col0X + ColW - toggleW;
             int f0 = Col0X + ColW - fieldW;
-            y0 = AddGeneralSection(Col0X, ColW, y0, t0);
+            y0 = AddGeneralSection(Col0X, ColW, y0, t0, f0, fieldW);
             y0 = AddSectionHeader("Discord Presence", Col0X, y0);
             y0 = AddToggleRow("Show stage on Discord", Col0X, ref _presenceToggle, t0, y0);
             WirePresenceToggle();
@@ -442,11 +510,14 @@ namespace TbhCompanion
             int y = Math.Max(y0, y1) + 18;
             split.Height = Sc(Math.Max(40, y - 30));
 
-            _saveBtn = new FlatButton { Text = "Save", Fill = Theme.Accent };
+            _saveBtn = new FlatButton { Text = Lang.T("Save"), Fill = Theme.Accent };
             _saveBtn.SetBounds(Sc(Col0X), Sc(y), Sc(88), Sc(30));
             _saveBtn.Click += delegate { SaveConfig(); };
             AddContent(_saveBtn);
+            // Set once and never recomputed, so it needs registering.
+            Reg(delegate { _saveBtn.Text = Lang.T("Save"); });
 
+            var noteFont = Theme.F(8.5f, FontStyle.Regular);
             _cfgNote = new Label
             {
                 AutoSize = false,
@@ -454,10 +525,16 @@ namespace TbhCompanion
                 Size = new Size(Sc(Col1X + ColW - (Col0X + 96)), Sc(30)),
                 ForeColor = Theme.TextMuted,
                 BackColor = Theme.FormBg,
-                Font = Theme.F(8.5f, FontStyle.Regular),
+                Font = noteFont,
                 TextAlign = ContentAlignment.MiddleLeft
             };
             AddContent(_cfgNote);
+            Reg(delegate
+            {
+                if (_cfgNoteRender != null) _cfgNote.Text = _cfgNoteRender();
+                string cjk = Lang.FontFamily;
+                if (cjk != null) _cfgNote.Font = new Font(cjk, noteFont.SizeInPoints, noteFont.Style);
+            });
 
             EndContent(y + 30);
         }
@@ -468,7 +545,7 @@ namespace TbhCompanion
             return y + HeaderAfter;
         }
 
-        int AddGeneralSection(int colX, int colW, int y, int toggleX)
+        int AddGeneralSection(int colX, int colW, int y, int toggleX, int fieldX, int fieldW)
         {
             y = AddSectionHeader("General", colX, y);
             y = AddToggleRow("Start with Windows", colX, ref _startWithWindows, toggleX, y);
@@ -477,6 +554,11 @@ namespace TbhCompanion
             {
                 AppSettings.StartWithWindows = _startWithWindows.Checked;
             };
+            y = AddDropdownRow("Language", Lang.ChoiceNames, colX, y, fieldX, fieldW, out _language);
+            // Select before wiring: AddDropdownRow starts at index 0, so a stored
+            // non-zero choice would otherwise fire a change during construction.
+            _language.SelectedIndex = Lang.Choice;
+            _language.SelectedIndexChanged += delegate { Lang.Select(_language.SelectedIndex); };
             return AddSectionDivider(colX, colW, y);
         }
 
@@ -507,28 +589,39 @@ namespace TbhCompanion
         // the side rail so it is always visible and never pushes the settings pane.
         void AddVersionBlock()
         {
+            var headFont = Theme.F(9.5f, FontStyle.Bold);
             var head = new Label
             {
-                Text = "Version", AutoSize = true, Location = new Point(Sc(16), Sc(72)),
-                ForeColor = Theme.TextDark, BackColor = Theme.SideBg, Font = Theme.F(9.5f, FontStyle.Bold)
+                Text = Lang.T("Version"), AutoSize = true, Location = new Point(Sc(16), Sc(72)),
+                ForeColor = Theme.TextDark, BackColor = Theme.SideBg, Font = headFont
             };
             _side.Controls.Add(head);
+            Reg(delegate { Retext(head, "Version", headFont); });
 
+            var noteFont = Theme.F(8.5f, FontStyle.Regular);
             _verNote = new Label
             {
-                Text = "checking for updates...", AutoSize = false,
+                Text = Lang.T("checking for updates..."), AutoSize = false,
                 Location = new Point(Sc(16), Sc(92)),
                 Size = new Size(Sc(SideW - 32), Sc(74)),
                 ForeColor = Theme.TextMuted, BackColor = Theme.SideBg,
-                Font = Theme.F(8.5f, FontStyle.Regular), TextAlign = ContentAlignment.TopLeft
+                Font = noteFont, TextAlign = ContentAlignment.TopLeft
             };
             _side.Controls.Add(_verNote);
+            // Text is refreshed every second by RefreshVersionRow; the Font is not.
+            Reg(delegate
+            {
+                string cjk = Lang.FontFamily;
+                if (cjk != null) _verNote.Font = new Font(cjk, noteFont.SizeInPoints, noteFont.Style);
+            });
 
             _updateBtn = new FlatButton { Text = UpdateTitle, Fill = Theme.Accent };
             _updateBtn.SetBounds(Sc(12), Sc(170), Sc(SideW - 24), Sc(30));
             _updateBtn.Click += delegate { RunUpdate(); };
             _updateBtn.Visible = false;
             _side.Controls.Add(_updateBtn);
+            // Set once above and never recomputed, so it needs registering.
+            Reg(delegate { _updateBtn.Text = UpdateTitle; });
 
             EnsureVersionCheck(false);
         }
@@ -565,7 +658,7 @@ namespace TbhCompanion
             var st = SelfUpdate.LastStatus;
             if (st == null)
             {
-                _verNote.Text = "checking for updates...";
+                _verNote.Text = Lang.T("checking for updates...");
                 _verNote.ForeColor = Theme.TextMuted;
                 _updateBtn.Visible = false;
                 return;
@@ -581,7 +674,8 @@ namespace TbhCompanion
 
         static string UpdateTitle
         {
-            get { return "Update " + SelfUpdate.Noun.ToLowerInvariant(); }
+            // ToLowerInvariant is a no-op on the Chinese noun.
+            get { return Lang.F("Update {0}", Lang.T(SelfUpdate.Noun).ToLowerInvariant()); }
         }
 
         // The presence-only edition ships no plugin, so it has nothing to redeploy.
@@ -589,8 +683,8 @@ namespace TbhCompanion
         {
             if (!Build.Synth) return "";
             return GameRestart.IsGameRunning()
-                ? "TaskBarHero is running, so the in-game plugin is refreshed once you close the game.\n\n"
-                : "The in-game plugin is redeployed automatically after the restart.\n\n";
+                ? Lang.T("TaskBarHero is running, so the in-game plugin is refreshed once you close the game.\n\n")
+                : Lang.T("The in-game plugin is redeployed automatically after the restart.\n\n");
         }
 
         void RunUpdate()
@@ -600,17 +694,18 @@ namespace TbhCompanion
             if (st == null || !st.CanUpdate) { EnsureVersionCheck(true); return; }
 
             string body =
-                "Update the companion to " + st.ReleaseTag + " for game v" + st.GameVersion + "?\n\n" +
-                "  - downloads " + st.ReleaseTag + " from GitHub\n" +
-                "  - replaces this app and restarts it\n\n" +
-                PluginNote() +
-                "Your save and settings are unaffected. Continue?";
+                Lang.F("Update the companion to {0} for game v{1}?\n\n" +
+                       "  - downloads {0} from GitHub\n" +
+                       "  - replaces this app and restarts it\n\n",
+                       st.ReleaseTag, st.GameVersion)
+                + PluginNote()
+                + Lang.T("Your save and settings are unaffected. Continue?");
             if (MessageBox.Show(this, body, UpdateTitle, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
                 return;
 
             _updateOpRunning = true;
             _updateBtn.Enabled = false;
-            _verNote.Text = "working...";
+            _verNote.Text = Lang.T("working...");
             var t = new System.Threading.Thread(delegate()
             {
                 bool restarting = SelfUpdate.Apply(st, delegate(string s) { PostVerNote(s); });
@@ -694,39 +789,61 @@ namespace TbhCompanion
             tiles = new TypeTile[captions.Length];
             for (int i = 0; i < captions.Length; i++)
             {
-                tiles[i] = new TypeTile { Caption = captions[i] };
+                tiles[i] = new TypeTile { Caption = Lang.T(captions[i]) };
                 tiles[i].SetBounds(Sc(colX + i * (tw + gap)), Sc(y), Sc(tw), Sc(ControlH));
                 AddContent(tiles[i]);
+                var tile = tiles[i]; var key = captions[i];
+                Reg(delegate { tile.SetCaption(Lang.T(key)); });
             }
             return y + ControlH + 12;
+        }
+
+        // Dropdown items are display-only: FlatDrop persists SelectedIndex, so the
+        // value arrays behind them (Grades, Recipes) are never translated.
+        static string[] Translated(string[] items)
+        {
+            var translated = new string[items.Length];
+            for (int i = 0; i < items.Length; i++) translated[i] = Lang.T(items[i]);
+            return translated;
         }
 
         // A per-type max-rarity row: caption + current grade label, then a 10-segment bar.
         int AddRarityBarRow(string caption, int colX, int colW, int y, int fieldX, int fieldW, out SegmentBar seg, out Label value)
         {
             AddRowLabel(caption, colX, y);
-            value = AddMainLabelBox(Grades[2], fieldX, y, fieldW, ControlH, Theme.GradeColors[2], Theme.F(9f, FontStyle.Bold), ContentAlignment.MiddleRight);
+            var vf = Theme.F(9f, FontStyle.Bold);
+            value = AddMainLabelBox(Grades[2], fieldX, y, fieldW, ControlH, Theme.GradeColors[2], vf, ContentAlignment.MiddleRight);
             y += RowH;
             seg = new SegmentBar { Value = 2 };
             seg.SetBounds(Sc(colX), Sc(y), Sc(colW), Sc(8));
             var s = seg; var v = value;
             s.ValueChanged += delegate { UpdateRarityLabel(s, v); };
+            Reg(delegate
+            {
+                UpdateRarityLabel(s, v);
+                string cjk = Lang.FontFamily;
+                if (cjk != null) v.Font = new Font(cjk, vf.SizeInPoints, vf.Style);
+            });
             AddContent(s);
             return y + 16;
         }
 
+        // Grades is the lookup key here, not the display text: the cfg stores the
+        // segment index, so translating the label cannot corrupt a saved value.
         void UpdateRarityLabel(SegmentBar seg, Label value)
         {
-            value.Text = Grades[seg.Value];
+            value.Text = Lang.T(Grades[seg.Value]);
             value.ForeColor = Theme.GradeColors[seg.Value];
         }
 
         int AddDropdownRow(string label, string[] items, int colX, int y, int fieldX, int fieldW, out FlatDrop drop)
         {
             AddRowLabel(label, colX, y);
-            drop = new FlatDrop { Items = items, SelectedIndex = 0 };
+            drop = new FlatDrop { Items = Translated(items), SelectedIndex = 0 };
             drop.SetBounds(Sc(fieldX), Sc(y), Sc(fieldW), Sc(ControlH));
             AddContent(drop);
+            var d = drop;
+            Reg(delegate { d.Items = Translated(items); });
             return y + RowH;
         }
 
@@ -734,7 +851,7 @@ namespace TbhCompanion
         {
             if (_modsBtn == null || _modOpRunning) return;
             _modsBtn.Enabled = true;
-            _modsBtn.Text = BepInExSetup.HasRemnants() ? "Remove mods" : "Install mods";
+            _modsBtn.Text = Lang.T(BepInExSetup.HasRemnants() ? "Remove mods" : "Install mods");
             _modsBtn.Invalidate();
         }
 
@@ -744,18 +861,22 @@ namespace TbhCompanion
         {
             var l = new Label
             {
-                Text = text, AutoSize = true, Location = new Point(Sc(x), Sc(y)),
+                Text = Lang.T(text), AutoSize = true, Location = new Point(Sc(x), Sc(y)),
                 ForeColor = color, BackColor = Theme.FormBg, Font = font
             };
             AddContent(l);
+            Reg(delegate { Retext(l, text, font); });
             return l;
         }
 
+        // Not registered here: the one caller (the rarity readout) tracks a
+        // SegmentBar, so its text has to be re-derived from the bar, not from a
+        // fixed key. AddRarityBarRow registers that instead.
         Label AddMainLabelBox(string text, int x, int y, int w, int h, Color color, Font font, ContentAlignment align)
         {
             var l = new Label
             {
-                Text = text, AutoSize = false, Location = new Point(Sc(x), Sc(y)),
+                Text = Lang.T(text), AutoSize = false, Location = new Point(Sc(x), Sc(y)),
                 Size = new Size(Sc(w), Sc(h)), ForeColor = color, BackColor = Theme.FormBg,
                 Font = font, TextAlign = align
             };
@@ -796,23 +917,23 @@ namespace TbhCompanion
         void RunSetup()
         {
             ConfirmAndRunModOp(
-                "Install mods",
-                "This will install mods by:\n\n" +
-                "  - backing up your save file\n" +
-                "  - downloading BepInEx (the mod loader, ~35 MB)\n" +
-                "  - installing it into the TaskBarHero folder\n\n" +
-                "The presence feature is unaffected. Continue?",
-                "Installing…",
+                Lang.T("Install mods"),
+                Lang.T("This will install mods by:\n\n" +
+                       "  - backing up your save file\n" +
+                       "  - downloading BepInEx (the mod loader, ~35 MB)\n" +
+                       "  - installing it into the TaskBarHero folder\n\n" +
+                       "The presence feature is unaffected. Continue?"),
+                Lang.T("Installing…"),
                 BepInExSetup.Install);
         }
 
         void RunRemove()
         {
             ConfirmAndRunModOp(
-                "Remove mods",
-                "This will remove mods by deleting BepInEx from the TaskBarHero folder.\n\n" +
-                "Your save and Discord presence are unaffected. Continue?",
-                "Removing…",
+                Lang.T("Remove mods"),
+                Lang.T("This will remove mods by deleting BepInEx from the TaskBarHero folder.\n\n" +
+                       "Your save and Discord presence are unaffected. Continue?"),
+                Lang.T("Removing…"),
                 BepInExSetup.Uninstall);
         }
 
@@ -821,13 +942,13 @@ namespace TbhCompanion
             if (_modOpRunning) return;
             if (!BepInExSetup.GameFound)
             {
-                MessageBox.Show(this, "Couldn't find the TaskBarHero folder.\n\nStart the game once so it can be located, then try again.",
+                MessageBox.Show(this, Lang.T("Couldn't find the TaskBarHero folder.\n\nStart the game once so it can be located, then try again."),
                     title, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             if (BepInExSetup.GameRunning())
             {
-                MessageBox.Show(this, "Please close TaskBarHero first, then try again.",
+                MessageBox.Show(this, Lang.T("Please close TaskBarHero first, then try again."),
                     title, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -863,7 +984,12 @@ namespace TbhCompanion
                     string note = _modOpNote;
                     LoadConfig();
                     if (!string.IsNullOrEmpty(note))
-                        _cfgNote.Text = note;
+                    {
+                        // Already localized at the source (BepInExSetup), so the
+                        // renderer just replays it.
+                        var captured = note;
+                        SetCfgNote(delegate { return captured; });
+                    }
                     RefreshModsButton();
                     RefreshLaunchButton();
                     EnsureVersionCheck(true);
@@ -891,7 +1017,7 @@ namespace TbhCompanion
             bool running = GameRestart.IsGameRunning();
             bool launching = GameRestart.IsLaunching();
             _launchBtn.Enabled = !running && !launching && !_modOpRunning;
-            _launchBtn.Text = running ? "Running" : launching ? "Launching…" : "Launch game";
+            _launchBtn.Text = running ? Lang.T("Running") : launching ? Lang.T("Launching…") : Lang.T("Launch game");
             _launchBtn.Invalidate();
         }
 
@@ -903,7 +1029,7 @@ namespace TbhCompanion
             if (_launchBtn != null)
             {
                 _launchBtn.Enabled = true;
-                _launchBtn.Text = "Launch game";
+                _launchBtn.Text = Lang.T("Launch game");
                 _launchBtn.Invalidate();
             }
             if (_modsBtn != null)
@@ -914,9 +1040,22 @@ namespace TbhCompanion
             GrowToFitContent();
         }
 
+        // Grows the window so every setting is visible without scrolling, capped
+        // to the desktop. Past that cap the pane has to keep scrolling rather
+        // than push its own bottom off the screen (high DPI, small display).
+        void GrowToFitScreen()
+        {
+            int max = 0;
+            try { max = Screen.FromControl(this).WorkingArea.Height; }
+            catch { try { max = Screen.PrimaryScreen.WorkingArea.Height; } catch { max = 0; } }
+            GrowToFitContent(max);
+        }
+
         // Resizes the form to the settings pane's natural height and re-runs the
         // absolute layout that normally depends on the fixed design height.
-        void GrowToFitContent()
+        void GrowToFitContent() { GrowToFitContent(0); }
+
+        void GrowToFitContent(int maxHeight)
         {
             if (_scroll == null || _main == null || _side == null) return;
 
@@ -927,6 +1066,7 @@ namespace TbhCompanion
 
             int b = BorderInset();
             int wanted = Sc(TopChrome) + contentBottom + Sc(16) + 2 * b;
+            if (maxHeight > 0 && wanted > maxHeight) wanted = maxHeight;
             if (wanted <= ClientSize.Height) return;
             ClientSize = new Size(ClientSize.Width, wanted);
 
@@ -959,27 +1099,29 @@ namespace TbhCompanion
             // Presence row: Discord connection state + the activity Discord shows.
             string presenceState;
             Color presenceDot;
-            if (!presenceOn) { presenceState = "Off"; presenceDot = Theme.TextMuted; }
-            else if (connected) { presenceState = "Live"; presenceDot = Theme.Green; }
-            else { presenceState = "Offline"; presenceDot = Theme.TextMuted; }
+            if (!presenceOn) { presenceState = Lang.T("Off"); presenceDot = Theme.TextMuted; }
+            else if (connected) { presenceState = Lang.T("Live"); presenceDot = Theme.Green; }
+            else { presenceState = Lang.T("Offline"); presenceDot = Theme.TextMuted; }
 
+            // The stage line stays English (it is also what Discord shows), which
+            // is why this regex still matches.
             var m = stage != null
                 ? Regex.Match(stage, @"(Act\s*\d+\s*-\s*Stage\s*\d+)\s*\(([^)]*)\)")
                 : Match.Empty;
             if (m.Success)
             {
-                _live.SetRow(0, "Presence",
+                _live.SetRow(0, Lang.T("Presence"),
                     m.Groups[1].Value.Replace("-", "–"),
                     m.Groups[2].Value.Replace(", ", " · "),
                     presenceState, presenceDot);
             }
             else
             {
-                bool waiting = diag != null && diag.IndexOf("waiting", StringComparison.OrdinalIgnoreCase) >= 0;
-                string value = !presenceOn ? "Disabled"
-                    : waiting ? "Waiting for game"
+                bool waiting = _waitingForGame != null && _waitingForGame();
+                string value = !presenceOn ? Lang.T("Disabled")
+                    : waiting ? Lang.T("Waiting for game")
                     : "—";
-                _live.SetRow(0, "Presence", value, ShortStatus(diag), presenceState, presenceDot);
+                _live.SetRow(0, Lang.T("Presence"), value, ShortStatus(diag), presenceState, presenceDot);
             }
 
             EnsureVersionCheck(false);   // no-op until the 30 min throttle expires
@@ -1010,27 +1152,27 @@ namespace TbhCompanion
                 bool synthOn = !d.ContainsKey("enableSynthesis") || (bool)d["enableSynthesis"];
 
                 Color synthDot = auto ? Theme.Green : Theme.TextMuted;
-                string synthState = auto ? "On" : "Off";
+                string synthState = Lang.T(auto ? "On" : "Off");
                 if (auto && d.ContainsKey("paused") && (bool)d["paused"])
                 {
                     synthDot = Theme.Amber;
-                    synthState = "Paused";
+                    synthState = Lang.T("Paused");
                 }
                 var bits = new List<string>();
-                if (lastChests > 0) bits.Add(lastChests + " chests");
-                if (lastRunes > 0) bits.Add(lastRunes + " runes");
-                if (lastBossRuns > 0) bits.Add(lastBossRuns + " boss runs");
-                if (lastOfferings > 0) bits.Add(lastOfferings + " offerings");
+                if (lastChests > 0) bits.Add(Lang.F("{0} chests", lastChests));
+                if (lastRunes > 0) bits.Add(Lang.F("{0} runes", lastRunes));
+                if (lastBossRuns > 0) bits.Add(Lang.F("{0} boss runs", lastBossRuns));
+                if (lastOfferings > 0) bits.Add(Lang.F("{0} offerings", lastOfferings));
                 if (bits.Count == 0 && !synthOn)
                 {
-                    if (chestOn) bits.Add("chests");
-                    else if (runeOn) bits.Add("runes");
-                    else if (offeringOn) bits.Add("offering");
+                    if (chestOn) bits.Add(Lang.T("chests"));
+                    else if (runeOn) bits.Add(Lang.T("runes"));
+                    else if (offeringOn) bits.Add(Lang.T("offering"));
                 }
-                bits.Add("every " + cycMin + " min");
+                bits.Add(Lang.F("every {0} min", cycMin));
                 string detail = string.Join(" · ", bits.ToArray());
-                _live.SetRow(1, "Loop",
-                    cycles + " cycles",
+                _live.SetRow(1, Lang.T("Loop"),
+                    Lang.F("{0} cycles", cycles),
                     detail,
                     synthState, synthDot);
             }
@@ -1039,13 +1181,24 @@ namespace TbhCompanion
 
         void SynthIdle(string why)
         {
-            _live.SetRow(1, "Loop", "—", why, "Off", Theme.TextMuted);
+            _live.SetRow(1, Lang.T("Loop"), "—", Lang.T(why), Lang.T("Off"), Theme.TextMuted);
         }
 
-        static string ShortStatus(string s)
+        // The card's sub-line has room for ~144 design px. Counting characters
+        // worked while this was English-only; CJK glyphs are about twice as wide,
+        // so measure against the font LiveStrip paints this line with.
+        string ShortStatus(string s)
         {
-            if (s == null) return "";
-            return s.Length > 22 ? s.Substring(0, 22) + "…" : s;
+            if (string.IsNullOrEmpty(s)) return "";
+            int max = Sc(SideW - 24 - 20);
+            var f = Theme.F(8f, FontStyle.Regular);
+            if (TextRenderer.MeasureText(s, f).Width <= max) return s;
+            for (int len = s.Length - 1; len > 0; len--)
+            {
+                string cut = s.Substring(0, len) + "…";
+                if (TextRenderer.MeasureText(cut, f).Width <= max) return cut;
+            }
+            return s.Substring(0, 1) + "…";
         }
 
         // ---- config file ----
@@ -1078,7 +1231,7 @@ namespace TbhCompanion
             if (_cfgPath == null || !File.Exists(_cfgPath))
             {
                 SetSettingsEnabled(false);
-                if (_cfgNote.Text == "") _cfgNote.Text = "start the game once to create settings";
+                if (_cfgNote.Text == "") SetCfgNote(delegate { return Lang.T("start the game once to create settings"); });
                 return;
             }
             try
@@ -1141,7 +1294,8 @@ namespace TbhCompanion
             catch (Exception ex)
             {
                 SetSettingsEnabled(false);
-                _cfgNote.Text = "config unreadable: " + ex.Message;
+                var failed = ex;
+                SetCfgNote(delegate { return Lang.F("config unreadable: {0}", failed.Message); });
             }
         }
 
@@ -1170,7 +1324,11 @@ namespace TbhCompanion
 
         void SaveConfig()
         {
-            if (_cfgPath == null || !File.Exists(_cfgPath)) { _cfgNote.Text = "start the game once to create settings"; return; }
+            if (_cfgPath == null || !File.Exists(_cfgPath))
+            {
+                SetCfgNote(delegate { return Lang.T("start the game once to create settings"); });
+                return;
+            }
             try
             {
                 string text = File.ReadAllText(_cfgPath);
@@ -1221,13 +1379,17 @@ namespace TbhCompanion
                     }
                 }
                 if (consoleRestart)
-                    _cfgNote.Text = "saved — console change needs a game restart";
+                    SetCfgNote(delegate { return Lang.T("saved — console change needs a game restart"); });
                 else if (PluginSupportsLiveAutoStart())
-                    _cfgNote.Text = "saved — applies in-game within ~10s";
+                    SetCfgNote(delegate { return Lang.T("saved — applies in-game within ~10s"); });
                 else
-                    _cfgNote.Text = "saved — restart the game to apply (plugin update pending)";
+                    SetCfgNote(delegate { return Lang.T("saved — restart the game to apply (plugin update pending)"); });
             }
-            catch (Exception ex) { _cfgNote.Text = "save failed: " + ex.Message; }
+            catch (Exception ex)
+            {
+                var failed = ex;
+                SetCfgNote(delegate { return Lang.F("save failed: {0}", failed.Message); });
+            }
         }
 
         // Live AutoStart sync landed in plugin 0.24.1; older loaded plugins need a restart.
