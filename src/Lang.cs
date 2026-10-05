@@ -320,6 +320,7 @@ namespace TbhCompanion
             { "Waiting for release v{0} (game v{1})", "等待发布 v{0}（游戏 v{1}）" },
             { "Release {0} has no {1} asset yet", "发布 {0} 还没有 {1} 资源" },
             { "Update available: game v{0} → release {1}", "有可用更新：游戏 v{0} → 发布 {1}" },
+            { "Update available: {0}", "有新版本可用：{0}" },
             { "Nothing to update.", "没有可更新的内容。" },
             { "Refusing an update from an unexpected location.", "更新来源异常，已拒绝。" },
             { "app folder not found", "找不到程序文件夹" },

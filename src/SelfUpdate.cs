@@ -127,6 +127,7 @@ namespace TbhCompanion
             public bool GameMissing;        // Unknown: the game folder was not found
             public bool ModsUnknown;        // Unknown: no readable plugin version
             public bool NoAssetYet;         // WaitingRelease: release exists, no asset
+            public bool HotfixUpdate;       // UpdateReady: same game version, newer build
 
             public bool CanUpdate { get { return State == State.UpdateReady && DownloadUrl != null; } }
 
@@ -166,7 +167,11 @@ namespace TbhCompanion
                             : Lang.F("Waiting for release v{0} (game v{1})", PendingRelease, GameVersion);
 
                     case State.UpdateReady:
-                        return Lang.F("Update available: game v{0} → release {1}", GameVersion, ReleaseTag);
+                        // A hotfix update keeps the same game version, so saying
+                        // "game v… → release …" would imply a game change.
+                        return HotfixUpdate
+                            ? Lang.F("Update available: {0}", ReleaseTag)
+                            : Lang.F("Update available: game v{0} → release {1}", GameVersion, ReleaseTag);
                 }
                 return "";
             }
@@ -230,14 +235,31 @@ namespace TbhCompanion
             }
 
             int cmp = CompareBuild(game, mods);
-            if (cmp == 0)
-            {
-                st.State = State.Matched;
-                return st;
-            }
             if (cmp < 0)
             {
                 st.State = State.Ahead;
+                return st;
+            }
+            if (cmp == 0)
+            {
+                // Already on the build for this game version, but a newer hotfix
+                // (v3.2.8-1) still counts as an update — that is how this fork
+                // ships a fix without waiting for a game patch. Best effort: a
+                // lookup failure must not demote a matched build to an error.
+                string hotfixTag = null, hotfixUrl = null;
+                try { FindRelease(game, out hotfixTag, out hotfixUrl); }
+                catch { }
+
+                int installed = mods.Hotfix < 0 ? 0 : mods.Hotfix;
+                if (hotfixUrl == null || HotfixOf(hotfixTag) <= installed)
+                {
+                    st.State = State.Matched;
+                    return st;
+                }
+                st.State = State.UpdateReady;
+                st.HotfixUpdate = true;
+                st.ReleaseTag = hotfixTag;
+                st.DownloadUrl = hotfixUrl;
                 return st;
             }
 
@@ -273,6 +295,14 @@ namespace TbhCompanion
         }
 
         // ---- GitHub releases ----
+
+        // A release tag's hotfix suffix, normalised: no suffix counts as 0. Used
+        // to tell a newer mods-only build from the one already installed.
+        static int HotfixOf(string tag)
+        {
+            Ver v = ParseMods(tag);
+            return v.Ok && v.Hotfix > 0 ? v.Hotfix : 0;
+        }
 
         internal static string AssetName()
         {

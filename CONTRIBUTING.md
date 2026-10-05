@@ -292,6 +292,27 @@ git push origin v1.0.0
 without cutting a release. The exe is gitignored — distribute via Releases, not
 by committing the binary.
 
+### Version numbers
+
+The tool version tracks the game's, offset by a constant: game `1.2.8` is
+released as `v3.2.8` (`X.Y` must match, or the updater will not find it).
+Self-update reads this mapping, so a tag outside it is invisible to users.
+
+| Game | Tag |
+|---|---|
+| `1.2.8` | `v3.2.8` |
+| `1.2.9` | `v3.2.9` |
+
+A `-n` suffix is a mods-only hotfix for the *same* game version — `v3.2.8-1`
+after `v3.2.8`. This fork ships a hotfix as a normal update: a client on
+`3.2.8` is offered `v3.2.8-1` without waiting for a game patch, while a client
+already on `3.2.8-1` is not. A manual build works the same way —
+`.\build.ps1 -Version 3.2.8-1` stamps the suffix into the exe.
+
+`SelfUpdate.Repo` must name the repository you publish releases in. It is
+`LaoZhuJackson/tbh-presence` here; pointing it at the upstream project would
+silently replace a distributed build with the official English release.
+
 ## Layout
 
 **Portable exe** (`src/`, compiled by `build.ps1`):
