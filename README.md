@@ -2,114 +2,77 @@
 
 [![GitHub Downloads](https://img.shields.io/github/downloads/LaoZhuJackson/tbh-presence/total)](https://github.com/LaoZhuJackson/tbh-presence/releases)
 
-**English** · [简体中文](README.zh-CN.md)
+[English](README.md) · **简体中文**
 
-A tray companion for **TaskBarHero**: shows your progress on Discord, and
-automates the game's idle chores.
+**TaskBarHero** 的托盘伴侣程序：在 Discord 上展示你的游戏进度，并自动完成游戏里的挂机杂务。
 
-![The Status & Settings window](docs/settings-window.png)
+![状态与设置窗口](docs/settings-window.zh-CN.png)
 
-## Features
+## 功能
 
-- **Discord presence** — your profile shows your live stage, difficulty, and
-  party. It reads the game's memory and never writes to it.
-- **Auto loop** (needs the mod) — runs every few minutes:
-  **Soulstone → Chest → Offering → Alchemy → Synthesis → Rune**.
-  - **Pause on mouse** — optional. Stops the loop while you move or click in
-    the game, then starts a new cycle after you stay still (default 30s).
-  - **Soulstones** — re-enters a cleared Act Boss or Contamin Act Boss stage at
-    the highest tier you allow (Normal/Nightmare/Hell/Torment), then walks your
-    hero back.
-  - **Chests** — opens StageBox chests (Normal / Boss / ActBoss, including
-    Plaguelands).
-  - **Offering** — spends offering coins through the Cube.
-  - **Alchemy** — melts junk gear into gold below a level and rarity you set.
-    Locked, reserved, and equipped items are never touched.
-  - **Synthesis** — cube synthesis for Equipment / Materials / Accessories, up
-    to a rarity cap and a target recipe level.
-  - **Runes** — auto-upgrades runes.
-- **Scheduled restart** — optionally close and relaunch TaskBarHero after N days
-  of uptime, to shed RAM on long idle sessions. In both editions.
-- **Language** — English or Simplified Chinese, picked in Status & Settings and
-  applied as soon as you pick it. The stage line stays English because Discord
-  is what shows it.
-- **Self-update** — tells you when a game patch has left the mods behind, and
-  updates itself when a matching release exists.
+- **Discord 动态** —— 你的个人资料会显示当前关卡、难度和队伍。它只读取游戏内存，从不写入。
+- **自动循环**（需要模组）—— 每隔几分钟运行一次：
+  **灵魂石 → 宝箱 → 献祭 → 炼金 → 合成 → 符文**。
+  - **鼠标操作时暂停** —— 可选。当你在游戏中移动或点击时暂停循环，停止操作一段时间（默认 30 秒）后开始新一轮。
+  - **灵魂石** —— 重新进入已通关的章节首领或污染章节首领关卡，使用你允许的最高难度层级（普通/噩梦/地狱/炼狱），然后把英雄带回原关卡。
+  - **宝箱** —— 开启 StageBox 宝箱（普通 / 首领 / 章节首领，含瘟疫之地）。
+  - **献祭** —— 通过 Cube 消耗献祭币。
+  - **炼金** —— 把你设定的等级和稀有度以下的废品装备熔炼成金币。锁定、保留和已装备的物品绝不会被动到。
+  - **合成** —— 对装备 / 材料 / 饰品进行 Cube 合成，受稀有度上限和目标配方等级限制。
+  - **符文** —— 自动升级符文。
+- **定时重启** —— 可选在运行 N 天后关闭并重新启动 TaskBarHero，以释放长时间挂机累积的内存。两个版本都支持。
+- **语言** —— 英文或简体中文，在「状态与设置」中选择后立即生效。关卡那一行保持英文，因为它是显示在 Discord 上的。
+- **自动更新** —— 游戏更新导致模组落后时会提示你，若存在匹配的发布版本则自动更新自身。
 
-## Which download?
+## 该下载哪个？
 
-The [Releases page](../../releases) has two editions:
+[发布页面](../../releases) 提供两个版本：
 
-| Download | What it does |
+| 下载 | 作用 |
 |----------|--------------|
-| **`TbhCompanion-Presence.exe`** | Discord presence and scheduled restart. No mod, nothing loaded into the game. The safe choice. |
-| **`TbhCompanion.exe`** | The above **plus** the in-game automation mod. |
+| **`TbhCompanion-Presence.exe`** | Discord 动态与定时重启。不含模组，不向游戏加载任何东西。最安全的选择。 |
+| **`TbhCompanion.exe`** | 在上述功能**之外**，额外包含游戏内自动化模组。 |
 
-You need Windows 10/11 and the [Discord desktop app](https://discord.com/download)
-(the browser version doesn't support presence), with **Settings → Activity
-Privacy → "Display current activity as a status message"** turned on. Nothing
-to install — it's a single exe.
+需要 Windows 10/11 和 [Discord 桌面版](https://discord.com/download)
+（网页版不支持动态），并在 Discord 中开启 **设置 → 活动隐私 → 「将当前活动显示为状态消息」**。无需安装任何东西 —— 单个 exe 即可运行。
 
-## Getting started
+## 快速上手
 
-1. Download an edition and double-click it. A helmet icon appears in your
-   system tray.
-2. Play TaskBarHero with Discord open — your profile updates within seconds.
-3. Double-click the tray icon for **Status & Settings**; right-click → **Quit**
-   to stop.
+1. 下载任一版本并双击运行。系统托盘会出现一个头盔图标。
+2. 保持 Discord 开启并游玩 TaskBarHero —— 你的个人资料会在几秒内更新。
+3. 双击托盘图标打开 **状态与设置**；右键 → **退出** 可停止。
 
-The first run after a game update takes about a minute to read the game; after
-that it starts instantly.
+游戏更新后的第一次运行需要约一分钟读取游戏；此后启动是瞬时的。
 
-> Windows SmartScreen may show "Windows protected your PC" because the app
-> isn't code-signed — click **More info → Run anyway**. Antivirus tools may also
-> flag it, because it reads the game's memory to see your progress.
+> 由于本程序没有代码签名，Windows SmartScreen 可能提示「Windows 已保护你的电脑」—— 点击 **更多信息 → 仍要运行**。杀毒软件也可能拦截，因为它需要读取游戏内存来得知你的进度。
 
-## Setting up the mod (one time)
+## 配置模组（一次性）
 
-The automation runs inside the game via the free mod loader **BepInEx**:
+自动化通过免费的模组加载器 **BepInEx** 在游戏内运行：
 
-1. Close TaskBarHero, open Status & Settings, click **Install mods** and
-   confirm. Your save is backed up first.
-2. Start the game and wait about a minute while BepInEx finishes setting
-   itself up.
+1. 关闭 TaskBarHero，打开「状态与设置」，点击 **安装模组** 并确认。你的存档会先被备份。
+2. 启动游戏，等待约一分钟让 BepInEx 完成自身的初始化。
 
-The button becomes **Remove mods** afterwards, and the app keeps the mod up to
-date. Removing it deletes BepInEx from the game folder; your save and Discord
-presence are untouched.
+之后该按钮会变为 **移除模组**，程序会持续保持模组为最新。移除会从游戏文件夹删除 BepInEx；你的存档和 Discord 动态不受影响。
 
-The loop then runs on its own, opening the panels it needs — you can leave the
-game alone. Everything is configured in Status & Settings; press **Save** and
-running settings reach the game within ~10 seconds.
+此后循环会自动运行，按需打开所需面板 —— 你可以完全不管游戏。全部配置都在「状态与设置」中；按 **保存**，运行中的设置会在约 10 秒内送达游戏。
 
-Self-updating needs write access to the app's folder, so keep
-`TbhCompanion.exe` somewhere like Downloads rather than under `Program Files`.
+自动更新需要对程序所在文件夹有写入权限，所以请把 `TbhCompanion.exe` 放在「下载」这类目录，而不是 `Program Files` 下。
 
-## Start it with Windows
+## 随 Windows 启动
 
-Open Status & Settings and turn on **Start with Windows**. Windows launches
-this copy of the companion at logon. If you previously dropped a shortcut in
-the Startup folder, delete it so the app does not start twice.
+打开「状态与设置」，开启 **开机启动**。Windows 会在登录时启动这个副本。如果你之前曾在「启动」文件夹放过快捷方式，请删除它，以免程序启动两次。
 
-## Something not working?
+## 遇到问题？
 
-Open a [GitHub issue](../../issues) — include what you were doing and, if the
-mod is involved, the BepInEx log.
+请开一个 [GitHub issue](../../issues) —— 说明你当时在做什么；如果涉及模组，请附上 BepInEx 日志。
 
 ---
 
-Building from source, memory-reading internals, the mod's design, and
-command-line options live in [CONTRIBUTING.md](CONTRIBUTING.md).
+从源码构建、内存读取原理、模组设计以及命令行选项见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## Disclaimer
+## 免责声明
 
-Automating item generation is against TaskBarHero's Terms of Service (which
-prohibit "macros or auto programs" during item generation) and could, in
-principle, lead to item removal or an account ban — especially for items
-tradable on the Marketplace. Use `TbhCompanion-Presence.exe` if you'd rather
-not take that risk.
+自动化物品生成违反 TaskBarHero 的服务条款（其中禁止在物品生成过程中使用「宏或自动程序」），原则上可能导致物品被移除或账号被封禁 —— 尤其是可在市场上交易的物品。如果你不想承担这个风险，请使用 `TbhCompanion-Presence.exe`。
 
-The presence feature only ever *reads* the game's memory and is not a game
-modification. The automation mod presses the game's own UI buttons and changes
-nothing else; it is opt-in and only active when BepInEx is installed. Use at
-your own risk.
+动态功能只会*读取*游戏内存，不属于游戏修改。自动化模组点击的是游戏自身的 UI 按钮，除此之外不改动任何东西；它是可选的，且仅在安装了 BepInEx 时生效。使用风险自负。
